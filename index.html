@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ROVER CONTROL</title>
+<style>
+:root{color-scheme:dark;--bg:#080e19;--panel:#111c2d;--line:#263750;--text:#edf5ff;--muted:#8fa3bd;--cyan:#35d6d0}
+*{box-sizing:border-box}body{margin:0;padding:20px;background:radial-gradient(ellipse at top,#1b3554,var(--bg) 60%);color:var(--text);font-family:Arial,sans-serif}
+main{max-width:950px;margin:auto}header,.row{display:flex;align-items:center;justify-content:space-between;gap:12px}h1{font-size:20px;letter-spacing:2px}.sub,.muted,.hint{color:var(--muted);font-size:12px}
+.panel{margin:14px 0;border:1px solid var(--line);border-radius:16px;background:var(--panel);overflow:hidden}.head{padding:14px 16px;border-bottom:1px solid var(--line);font-size:12px;font-weight:bold;letter-spacing:1px}.body{padding:16px}
+input[type=text]{min-width:0;flex:1;padding:12px;border:1px solid var(--line);border-radius:10px;background:#091321;color:white}
+button{padding:12px;border:1px solid #34506f;border-radius:12px;background:#1a304b;color:white;font-weight:bold;cursor:pointer}
+.connect{background:var(--cyan);color:#062126}.status{font-size:12px;color:var(--muted);margin-top:10px}
+.layout{display:grid;grid-template-columns:1.4fr 1fr;gap:14px}#photo{width:100%;min-height:190px;max-height:480px;object-fit:contain;background:#050910;border-radius:10px}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:300px;margin:auto}.pad button{height:65px;font-size:22px;touch-action:none}.pad .empty{visibility:hidden}.pad .stop{font-size:12px;color:#ffb8b8}
+input[type=range]{width:100%;accent-color:var(--cyan);margin:22px 0}.hint{text-align:center}
+@media(max-width:700px){.layout{grid-template-columns:1fr}} 
+</style></head><body><main>
+<header><div><h1>ROVER CONTROL</h1><div class="sub">ESP32-CAM · SAME WI-FI CONTROL</div></div><div id="state">● NOT CONNECTED</div></header>
+<section class="panel"><div class="head">DEVICE CONNECTION</div><div class="body">
+<div class="row"><input id="ip" type="text" placeholder="ESP32 IP 예: 192.168.0.25"><button class="connect" id="connect">CONNECT</button></div>
+<p class="muted">ESP32와 조종 기기를 같은 Wi-Fi에 연결하고, ESP32 시리얼 모니터에 표시된 IP를 입력하세요.</p><div class="status" id="msg">연결 전입니다.</div></div></section>
+<div class="layout"><section class="panel"><div class="head">LIVE CAMERA</div><div class="body"><img id="photo" alt="연결 후 카메라 영상이 표시됩니다"></div></section>
+<div>
+<section class="panel"><div class="head">MOVEMENT · WASD</div><div class="body"><div class="pad">
+<button class="empty" tabindex="-1"></button><button data-move="forward">▲</button><button class="empty" tabindex="-1"></button>
+<button data-move="left">◀</button><button class="stop" data-move="stop">STOP</button><button data-move="right">▶</button>
+<button class="empty" tabindex="-1"></button><button data-move="backward">▼</button><button class="empty" tabindex="-1"></button></div><p class="hint">W A S D 이동 · 키를 놓으면 정지</p></div></section>
+<section class="panel"><div class="head">MOTOR SPEED</div><div class="body"><div class="row"><b><span id="speedValue">85</span> / 255</b><span id="speedPct" class="muted">33%</span></div><input id="speed" type="range" min="1" max="255" step="1" value="85"><div class="row muted"><span>1</span><span>128</span><span>255</span></div></div></section>
+<section class="panel"><div class="head">FRONT LED</div><div class="body row"><span id="ledText">LIGHT IS OFF</span><button id="led">OFF</button></div></section></div></div>
+</main>
+<script>
+let base="",activeKey=null,ledOn=false;
+const $=id=>document.getElementById(id), photo=$("photo");
+function privateIP(s){let p=s.split(".");if(p.length!==4||p.some(x=>!/^[0-9]+$/.test(x)||+x>255))return false;let a=+p[0],b=+p[1];return a===10||(a===192&&b===168)||(a===172&&b>=16&&b<=31)}
+function localFetch(url){return fetch(url,{method:"GET",mode:"cors",cache:"no-store",credentials:"omit",targetAddressSpace:"local"})}
+async function connect(){let host=$("ip").value.trim();host=host.replace("http://","").replace("https://","").replace(/\/+$/,"");
+if(!privateIP(host)&&!host.endsWith(".local")){$("msg").textContent="192.168.x.x 등의 사설 IP 주소를 입력하세요.";return}
+base="http://"+host;$("msg").textContent="연결 중입니다. 브라우저가 로컬 네트워크 권한을 물으면 허용하세요.";
+try{let r=await localFetch(base+"/action?go=stop");if(!r.ok)throw Error("HTTP "+r.status);photo.src=base+":81/stream";$("state").textContent="● CONNECTED";$("msg").textContent="연결됨: "+host}
+catch(e){base="";photo.removeAttribute("src");$("state").textContent="● NOT CONNECTED";$("msg").textContent="연결 실패: "+e.message+" · 전원, IP, 같은 Wi-Fi, 브라우저 권한을 확인하세요."}}
+$("connect").onclick=connect;$("ip").addEventListener("keydown",e=>{if(e.key==="Enter")connect()});
+async function command(q){if(!base){$("msg").textContent="먼저 ESP32를 연결하세요.";return}try{let r=await localFetch(base+"/action?"+q);if(!r.ok)throw Error("HTTP "+r.status)}catch(e){$("msg").textContent="명령 전송 실패: "+e.message}}
+$("led").onclick=()=>{if(!base)return;ledOn=!ledOn;command("led="+(ledOn?"on":"off"));$("led").textContent=ledOn?"ON":"OFF";$("ledText").textContent=ledOn?"LIGHT IS ON":"LIGHT IS OFF"};
+$("speed").oninput=()=>{$("speedValue").textContent=$("speed").value;$("speedPct").textContent=Math.round(+$("speed").value/255*100)+"%"};
+$("speed").onchange=()=>command("speed="+$("speed").value);
+document.querySelectorAll("[data-move]").forEach(b=>{let m=b.dataset.move;if(m==="stop"){b.onclick=()=>command("go=stop");return}
+let start=e=>{e.preventDefault();if(!base)return;b.classList.add("pressed");command("go="+m)};
+let stop=e=>{if(e)e.preventDefault();b.classList.remove("pressed");command("go=stop")};
+b.addEventListener("pointerdown",start);b.addEventListener("pointerup",stop);b.addEventListener("pointerleave",stop);b.addEventListener("pointercancel",stop)});
+const keys={KeyW:"forward",KeyA:"left",KeyS:"backward",KeyD:"right"};
+window.addEventListener("keydown",e=>{let t=e.target;if(t&&(t.isContentEditable||["INPUT","TEXTAREA","SELECT"].includes(t.tagName)))return;
+if(e.code==="Space"){e.preventDefault();if(!e.repeat)$("led").click();return}
+if(e.code in keys&&!e.repeat&&base){e.preventDefault();activeKey=e.code;command("go="+keys[e.code])}});
+window.addEventListener("keyup",e=>{if(e.code===activeKey){activeKey=null;command("go=stop")}});
+window.addEventListener("blur",()=>{if(activeKey){activeKey=null;command("go=stop")}});
+</script></body></html>
